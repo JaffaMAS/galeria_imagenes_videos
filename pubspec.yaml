@@ -35,6 +35,16 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # Core para galería
+  photo_manager: ^3.8.3
+  video_player: ^2.10.1
+  permission_handler: ^12.0.1
+  extended_image: ^10.0.1        # Reemplaza photo_view + incluye caching y zoom
+  path_provider: ^2.1.5
+
+  # Opcional: si más adelante necesitas mejor reproductor de video
+  # better_player: ^0.0.84
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,4 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Permisos para Android 13+ (API 33+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
+    
+    <!-- Permisos para Android 12 y anteriores -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+                     android:maxSdkVersion="32"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+                     android:maxSdkVersion="29"/>
     <application
         android:label="galeria_imagenes_videos"
         android:name="${applicationName}"
@@ -20,6 +30,13 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+                        <!-- Disable Impeller (Vulkan) renderer on devices with driver issues -->
+                        <meta-data
+                            android:name="io.flutter.embedding.android.EnableImpeller"
+                            android:value="false" />
+                        <meta-data
+                            android:name="io.flutter.embedding.android.DisableImpeller"
+                            android:value="true" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -30,6 +47,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Also provide Impeller control at application level for older/newer embeddings -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
+        <meta-data
+            android:name="io.flutter.embedding.android.DisableImpeller"
+            android:value="true" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

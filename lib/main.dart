@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:photo_manager/photo_manager.dart';
+import 'services/permission_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -7,119 +10,279 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Galería de Imágenes y Videos',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        primarySwatch: Colors.blue,
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const PermissionTestScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class PermissionTestScreen extends StatefulWidget {
+  const PermissionTestScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<PermissionTestScreen> createState() => _PermissionTestScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _PermissionTestScreenState extends State<PermissionTestScreen>
+    with WidgetsBindingObserver {
+  bool _permissionsGranted = false;
+  bool _isLoading = true;
+  bool _isCheckingPermissions = false;
+  bool _hasShownDialog = false;
+  bool _isDialogOpen = false; // ← NUEVO: Controla si el diálogo está abierto
+  String _statusMessage = 'Verificando permisos...';
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkPermissions();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Solo re-chequear si no estamos ya verificando y si habíamos mostrado el diálogo
+      if (!_isCheckingPermissions && _hasShownDialog) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            debugPrint('App resumed, rechecking permissions...');
+            _hasShownDialog = false;
+            _checkPermissions();
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> _checkPermissions() async {
+    if (!mounted || _isCheckingPermissions) return;
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _isCheckingPermissions = true;
+      _isLoading = true;
+      _statusMessage = 'Verificando permisos...';
+    });
+
+    try {
+      final PermissionState ps = await PhotoManager.requestPermissionExtend();
+
+      debugPrint('PhotoManager permission state: ${ps.name}');
+
+      if (ps.isAuth || ps.hasAccess) {
+        // ← NUEVO: Si hay permisos y el diálogo está abierto, cerrarlo
+        if (_isDialogOpen && mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+          _isDialogOpen = false;
+        }
+
+        // Permisos otorgados
+        if (!mounted) return;
+        setState(() {
+          _permissionsGranted = true;
+          _isLoading = false;
+          _isCheckingPermissions = false;
+          _hasShownDialog = false;
+          _statusMessage = '¡Permisos otorgados correctamente!';
+        });
+
+        // Mostrar SnackBar de confirmación
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ Permisos otorgados - Listo para cargar galería'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        // Permisos denegados o limitados
+        if (!mounted) return;
+        setState(() {
+          _permissionsGranted = false;
+          _isLoading = false;
+          _isCheckingPermissions = false;
+          _statusMessage = ps == PermissionState.denied
+              ? 'Permisos denegados permanentemente'
+              : 'Permisos no otorgados';
+        });
+
+        // Solo mostrar diálogo UNA VEZ si los permisos están permanentemente denegados
+        if (ps == PermissionState.denied &&
+            !_hasShownDialog &&
+            !_isDialogOpen) {
+          _hasShownDialog = true;
+          _showPermanentDenialDialog();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al verificar permisos: $e');
+      if (!mounted) return;
+
+      setState(() {
+        _permissionsGranted = false;
+        _isLoading = false;
+        _isCheckingPermissions = false;
+        _statusMessage = 'Error al verificar permisos';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showPermanentDenialDialog() {
+    _isDialogOpen = true; // ← NUEVO: Marcar que el diálogo está abierto
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Permisos requeridos'),
+        content: const Text(
+          'La app necesita acceso a fotos y videos para funcionar. '
+          'Por favor, habilita los permisos en Configuración.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _isDialogOpen = false; // ← NUEVO: Marcar que se cerró
+              setState(() => _hasShownDialog = false);
+            },
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _isDialogOpen =
+                  false; // ← NUEVO: Marcar que se cerró antes de ir a Settings
+              openAppSettings();
+              // Mantener _hasShownDialog = true para que al volver chequee permisos
+            },
+            child: const Text('Ir a Configuración'),
+          ),
+        ],
+      ),
+    ).then((_) {
+      // ← NUEVO: Por si el diálogo se cierra de otra forma
+      _isDialogOpen = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Verificación de Permisos'),
+        centerTitle: true,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 20),
+                  Text('Verificando permisos...'),
+                ],
+              ),
+            )
+          : Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _permissionsGranted
+                          ? Icons.check_circle
+                          : Icons.warning_amber_rounded,
+                      size: 80,
+                      color: _permissionsGranted ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      _statusMessage,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color:
+                            _permissionsGranted ? Colors.green : Colors.orange,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 40),
+                    if (!_permissionsGranted) ...[
+                      const Text(
+                        'Esta app necesita acceso a tus fotos y videos para mostrar tu galería.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        onPressed:
+                            _isCheckingPermissions ? null : _checkPermissions,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Solicitar permisos'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: () {
+                          _hasShownDialog = true;
+                          openAppSettings();
+                        },
+                        icon: const Icon(Icons.settings),
+                        label: const Text('Abrir configuración'),
+                      ),
+                    ] else ...[
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          // Aquí irá la navegación a GalleryScreen
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'Próximo paso: Cargar galería (Módulo 2)'),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Ir a Galería'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
