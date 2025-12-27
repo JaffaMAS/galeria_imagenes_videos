@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
-import 'services/permission_service.dart';
+import 'screens/gallery_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -37,7 +37,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
   bool _isLoading = true;
   bool _isCheckingPermissions = false;
   bool _hasShownDialog = false;
-  bool _isDialogOpen = false; // ← NUEVO: Controla si el diálogo está abierto
+  bool _isDialogOpen = false;
   String _statusMessage = 'Verificando permisos...';
 
   @override
@@ -56,7 +56,6 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Solo re-chequear si no estamos ya verificando y si habíamos mostrado el diálogo
       if (!_isCheckingPermissions && _hasShownDialog) {
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
@@ -84,13 +83,11 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
       debugPrint('PhotoManager permission state: ${ps.name}');
 
       if (ps.isAuth || ps.hasAccess) {
-        // ← NUEVO: Si hay permisos y el diálogo está abierto, cerrarlo
         if (_isDialogOpen && mounted) {
           Navigator.of(context, rootNavigator: true).pop();
           _isDialogOpen = false;
         }
 
-        // Permisos otorgados
         if (!mounted) return;
         setState(() {
           _permissionsGranted = true;
@@ -100,7 +97,6 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
           _statusMessage = '¡Permisos otorgados correctamente!';
         });
 
-        // Mostrar SnackBar de confirmación
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✓ Permisos otorgados - Listo para cargar galería'),
@@ -109,7 +105,6 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
           ),
         );
       } else {
-        // Permisos denegados o limitados
         if (!mounted) return;
         setState(() {
           _permissionsGranted = false;
@@ -120,7 +115,6 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
               : 'Permisos no otorgados';
         });
 
-        // Solo mostrar diálogo UNA VEZ si los permisos están permanentemente denegados
         if (ps == PermissionState.denied &&
             !_hasShownDialog &&
             !_isDialogOpen) {
@@ -149,7 +143,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
   }
 
   void _showPermanentDenialDialog() {
-    _isDialogOpen = true; // ← NUEVO: Marcar que el diálogo está abierto
+    _isDialogOpen = true;
 
     showDialog(
       context: context,
@@ -164,7 +158,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _isDialogOpen = false; // ← NUEVO: Marcar que se cerró
+              _isDialogOpen = false;
               setState(() => _hasShownDialog = false);
             },
             child: const Text('Cancelar'),
@@ -172,17 +166,14 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _isDialogOpen =
-                  false; // ← NUEVO: Marcar que se cerró antes de ir a Settings
+              _isDialogOpen = false;
               openAppSettings();
-              // Mantener _hasShownDialog = true para que al volver chequee permisos
             },
             child: const Text('Ir a Configuración'),
           ),
         ],
       ),
     ).then((_) {
-      // ← NUEVO: Por si el diálogo se cierra de otra forma
       _isDialogOpen = false;
     });
   }
@@ -261,11 +252,11 @@ class _PermissionTestScreenState extends State<PermissionTestScreen>
                     ] else ...[
                       ElevatedButton.icon(
                         onPressed: () {
-                          // Aquí irá la navegación a GalleryScreen
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                  'Próximo paso: Cargar galería (Módulo 2)'),
+                          // Navegar a GalleryScreen
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const GalleryScreen(),
                             ),
                           );
                         },
